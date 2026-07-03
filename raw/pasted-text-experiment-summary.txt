@@ -1,0 +1,99 @@
+**Итог После Всех Прогонов**
+
+Главный вывод: **строить не браузерного кликера, а скучный HTTP-first мониторинг**.  
+`browser-harness` подтвердил HTTP-разведку: данные списков и карточек доступны без JS-рендера. Браузер нужен для разведки, скриншотов, проверки UI-фильтров и ремонта адаптеров.
+
+**Verdict MVP**
+Запускать MVP так:
+
+1. **Megapolis**: `HTTP -> HTML parser`.
+2. **Realt**: `HTTP -> parse __NEXT_DATA__`.
+3. **Kufar**: опционально и осторожно: `SSR HTML / __NEXT_DATA__`, либо API только после явного принятия robots/terms риска.
+4. **Playwright/browser-harness**: не cron-основа, а инструмент диагностики.
+5. **Vision**: не нужен для цены, площади, адреса, даты.
+
+**По Сайтам**
+
+| Сайт | Лучший способ | JS нужен | API/JSON | Риск защиты | VPS риск | Сложность | Уверенность |
+|---|---|---:|---|---:|---:|---:|---:|
+| `megapolis-real.by` | HTTP + DOM parser | Нет | Полезного listing API нет | Низкий | Низкий-средний | Средняя | Высокая |
+| `realt.by` | HTTP + `__NEXT_DATA__` | Нет | Да, `pageProps.objects/object` | Низкий-средний | Средний | Низкая-средняя | Высокая |
+| `re.kufar.by` | Технически HTTP JSON/SSR; practically cautious SSR | Нет | Да, `__NEXT_DATA__` + API | Средний | Средний-высокий | Средняя | Средняя |
+
+**Что Подтвердил Browser-Harness**
+
+| Сайт | Browser-факт | Вывод |
+|---|---|---|
+| Megapolis | DOM содержит 30 карточек, `data-go-url`, `sortBy=createdon`, `sortDir=DESC`, пагинация `?page=2`; капчи нет | HTTP parser надежен |
+| Kufar | Есть `__NEXT_DATA__`, `listing.ads`, `vip`, `pagination`, detail `adView.data.initial`; cookie modal есть, капчи нет | Технически легко, юридически/robots осторожно |
+| Realt | Есть `__NEXT_DATA__`, `pageProps.objects`, detail `pageProps.object`; фоновые `/bff/graphql` видны, но не нужны | HTTP + embedded JSON |
+
+Скрины лежат тут:
+- [Megapolis screenshots](</C:/Users/user/Documents/ZeroFucks/browser-harness/agent-workspace/screenshots/megapolis>)
+- [Kufar screenshots](</C:/Users/user/Documents/ZeroFucks/browser-harness/agent-workspace/screenshots/kufar>)
+- [Realt screenshots](</C:/Users/user/Documents/ZeroFucks/browser-harness/agent-workspace/screenshots/realt>)
+
+Заметки для будущей разведки:
+- [Megapolis note](</C:/Users/user/Documents/ZeroFucks/browser-harness/domain-skills/megapolis-real/commercial-rent-monitoring.md>)
+- [Kufar note](</C:/Users/user/Documents/ZeroFucks/browser-harness/domain-skills/kufar/commercial-rent-monitoring.md>)
+- [Realt note](</C:/Users/user/Documents/ZeroFucks/browser-harness/domain-skills/realt/commercial-rent-monitoring.md>)
+
+**Практичные URL**
+
+Megapolis:
+- `https://megapolis-real.by/realt/torgovaya-nedvizhimost/tip/pomeshheniya-pod-uslugi/fitnes/`
+- `https://megapolis-real.by/realt/skladskaya-nedvizhimost/arenda/`
+- `https://megapolis-real.by/realt/torgovaya-nedvizhimost/arenda/`
+
+Realt:
+- `https://realt.by/rent/warehouses/`
+- `https://realt.by/rent/storages/`
+- `https://realt.by/rent/production/`
+- `https://realt.by/rent/services/`
+- `https://realt.by/rent/shops/`
+
+Kufar:
+- `https://re.kufar.by/l/minsk/snyat/kommercheskaya`
+- `https://re.kufar.by/l/minsk/snyat/kommercheskaya/sklady`
+- `https://re.kufar.by/l/minsk/snyat/kommercheskaya/promyshlennye`
+- `https://re.kufar.by/l/minsk/snyat/kommercheskaya/magaziny`
+
+**Стратегии**
+
+| Стратегия | Плюсы | Минусы | Когда использовать |
+|---|---|---|---|
+| HTTP parser | Самый простой cron | Нужны селекторы | Megapolis |
+| HTTP + embedded JSON | Стабильнее DOM | Может меняться схема | Realt, Kufar |
+| Playwright headless | Видит JS UI | Тяжелее, больше bot-риск | Только fallback |
+| browser-harness | Реальный Chrome, скрины, DOM/network | Не production-runner | Разведка/ремонт |
+| VPS | Автономно | IP-риск | Megapolis/Realt после тестов |
+| Local PC cron | Меньше IP-рисков | ПК должен быть включен | Первый тестовый период |
+| Browser Use Cloud | Изоляция | Дороже/сложнее | Не нужен для MVP |
+
+**Реальные Проблемы**
+- `Kufar`: API удобный, но `robots.txt` запрещает многие query/cursor/sort URL. Делать осторожно.
+- `Realt`: дефолтная сортировка “Рекомендуемые”, не чистая новизна. Нужны `createdAt/updatedAt`.
+- `Megapolis`: HTML шумный, нужен DOM parser, не regex по всему тексту.
+- Дубли между сайтами почти неизбежны.
+- Контакты/телефоны лучше не собирать и не раскрывать автоматически.
+- Фото не скачивать пачками, хранить URL/превью.
+
+**Рекомендованный MVP На 7 Дней**
+| День | Работа |
+|---|---|
+| 1 | Зафиксировать URL и raw samples |
+| 2-3 | Адаптеры: Megapolis HTML, Realt Next JSON, Kufar cautious |
+| 4 | SQLite, snapshots, dedup |
+| 5 | Scoring: жесткие фильтры + LLM для кандидатов |
+| 6 | Telegram-дайджест |
+| 7 | Тест ПК vs VPS, стоп-сигналы, лог ошибок |
+
+**Четкое Решение**
+- **На ПК:** первые 7-10 дней гонять весь мониторинг, плюс `browser-harness` для диагностики.
+- **На VPS:** переносить сначала Megapolis и Realt.
+- **Kufar:** включать отдельным флагом, без deep pagination и без телефонов.
+- **Playwright:** только если HTTP перестал давать данные.
+- **Vision:** не использовать.
+
+**Вопросы Перед Реализацией**
+Город/районы, бюджет, минимальная площадь, высота потолка, допустимы ли склады/ангары/производства, нужен ли отдельный вход, парковка, душевые, ремонт, и какие признаки сразу исключают объект.
