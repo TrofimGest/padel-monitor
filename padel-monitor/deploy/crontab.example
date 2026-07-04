@@ -1,0 +1,8 @@
+# crontab -e на VPS (время сервера — выставить TZ=Europe/Minsk в /etc/timezone или тут)
+CRON_TZ=Europe/Minsk
+
+# ежедневный сбор в 08:40
+40 8 * * * cd /opt/padel-monitor && ./.venv/bin/python -m padel_monitor.crawl >> data/crawl.log 2>&1
+
+# еженедельный отчёт: воскресенье 18:00
+0 18 * * 0 cd /opt/padel-monitor && ./.venv/bin/python -m padel_monitor.weekly >> data/report.log 2>&1

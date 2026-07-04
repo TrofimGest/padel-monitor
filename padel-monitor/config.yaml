@@ -1,0 +1,48 @@
+profile:
+  min_area_m2: 180          # 1 корт: 20x10 + конструкция ~231 м²; берём с запасом вниз
+  two_courts_area_m2: 450   # бонус: влезают 2 корта
+  min_height_m: 5.0         # высота указана и ниже — отказ
+  good_height_m: 6.0
+  great_height_m: 8.0
+  # город/район, по которым проходит объявление (подстрока, без регистра)
+  regions: ["минск", "минский"]
+  # жёсткие исключения по тексту (подтверждены)
+  exclude_keywords: ["подвал", "цокол", "коворкинг", "кабинет"]
+  top_n: 15                 # сколько вариантов в еженедельном отчёте
+
+sources:
+  realt:
+    enabled: true
+    pages: 2                # страниц на категорию за прогон (sortType=createdAt)
+    delay_s: 3
+    categories:             # slug каталога realt.by/rent/<slug>/
+      - warehouses
+      - storages
+      - production
+      - services
+      - shops
+  kufar:
+    enabled: true
+    delay_s: 3
+    urls:                   # только SSR первой страницы, без query-параметров
+      - https://re.kufar.by/l/minsk/snyat/kommercheskaya
+      - https://re.kufar.by/l/minsk/snyat/kommercheskaya/sklady
+      - https://re.kufar.by/l/minsk/snyat/kommercheskaya/promyshlennye
+  megapolis:
+    enabled: false          # сайт недоступен не с BY IP; включить и проверить с VPS
+    delay_s: 3
+    urls:
+      - https://megapolis-real.by/realt/skladskaya-nedvizhimost/arenda/
+      - https://megapolis-real.by/realt/torgovaya-nedvizhimost/arenda/
+
+telegram:
+  chat_id: 337541656
+
+scoring:
+  llm_model: claude-sonnet-5          # используется, если задан ANTHROPIC_API_KEY
+  vision_model: claude-sonnet-5       # анализ фото top-N
+  vision_max_listings: 15
+  vision_max_images: 4
+
+db_path: data/monitor.db
+raw_dir: data/raw
