@@ -4,6 +4,16 @@
 Реализация: `../padel-monitor/` — MVP собран и проверен end-to-end 2026-07-04
 (Realt + Kufar работают, первый отчёт отправлен в Telegram; Megapolis за
 флагом — сайт недоступен не с BY-IP, проверить с VPS). Помещения: 1–2 корта.
+
+> **Ревизия 2026-07-04 (v3, Pi-based).** Проект переведён на pi-mono:
+> Pi-агент (`pi-coding-agent` + `pi-agent-core` + `pi-ai`) — рантайм для
+> LLM-скоринга, vision, судьи и оркестрации недельного отчёта (скилл
+> `.pi/skills/padel-weekly-report`); LLM-аутентификация — подписка через
+> `pi /login` (ChatGPT Plus/Pro/Codex или Anthropic), токены в
+> `~/.pi/agent/auth.json`. Python остаётся детерминированными коллекторами
+> с bounded JSON-контрактами, управляется только uv (`pyproject.toml`,
+> dev-группа: browser-harness для разведки/ремонта — не production-crawler).
+> Секции ниже про «модельный слой на Anthropic SDK» устарели в этой части.
 Заменяет: `real-estate-monitor-architecture.md` (черновик остаётся как справка по разведке)
 
 ## 1. Зафиксированные требования

@@ -41,14 +41,10 @@ sources:
 telegram:
   chat_id: 337541656
 
-scoring:                              # активно при заданном ANTHROPIC_API_KEY
-  bulk_model: claude-haiku-4-5        # массовый скоринг текста (ежедневно)
-  vision_model: claude-haiku-4-5      # скрининг фото кандидатов (еженедельно)
-  judge_model: claude-opus-4-8        # финальный судья: сравнение и итоговый score
-  vision_max_listings: 20
-  vision_max_images: 4
-  judge_max_candidates: 15
-  prev_leaders: 5                     # сколько прошлых лидеров дать судье для сравнения
+# LLM-скоринг/vision/судья живут в Pi-агенте (.pi/skills/padel-weekly-report),
+# модель выбирается в Pi через /model. Здесь только параметры выдачи данных.
+report:
+  prev_leaders: 5                     # сколько прошлых лидеров отдавать судье для сравнения
 
 db_path: data/monitor.db
 raw_dir: data/raw

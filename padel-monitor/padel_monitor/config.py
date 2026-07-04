@@ -14,6 +14,5 @@ def load_config() -> dict:
     cfg["db_path"] = str(ROOT / cfg["db_path"])
     cfg["raw_dir"] = str(ROOT / cfg["raw_dir"])
     cfg["telegram"]["token"] = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    cfg["anthropic_api_key"] = os.environ.get("ANTHROPIC_API_KEY", "")
     cfg["healthchecks_url"] = os.environ.get("HEALTHCHECKS_URL", "")
     return cfg

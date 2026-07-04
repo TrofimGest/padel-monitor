@@ -1,8 +1,10 @@
-# crontab -e на VPS (время сервера — выставить TZ=Europe/Minsk в /etc/timezone или тут)
+# crontab -e (время — Europe/Minsk)
 CRON_TZ=Europe/Minsk
+# uv и pi должны быть в PATH cron-окружения
+PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin
 
-# ежедневный сбор в 08:40
-40 8 * * * cd /opt/padel-monitor && ./.venv/bin/python -m padel_monitor.crawl >> data/crawl.log 2>&1
+# ежедневный детерминированный сбор в 08:40 (без LLM)
+40 8 * * * cd /opt/padel-monitor && uv run padel-collect >> data/collect.log 2>&1
 
-# еженедельный отчёт: воскресенье 18:00
-0 18 * * 0 cd /opt/padel-monitor && ./.venv/bin/python -m padel_monitor.weekly >> data/report.log 2>&1
+# недельный отчёт: воскресенье 18:00 — Pi-агент (скоринг, фото, судья, Telegram)
+0 18 * * 0 cd /opt/padel-monitor && pi -p "Запусти недельный отчёт по скиллу padel-weekly-report" --no-session >> data/report.log 2>&1
