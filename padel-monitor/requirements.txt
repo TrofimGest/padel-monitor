@@ -2,3 +2,4 @@ httpx
 selectolax
 PyYAML
 python-dotenv
+anthropic

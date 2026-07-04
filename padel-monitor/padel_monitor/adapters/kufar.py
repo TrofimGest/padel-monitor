@@ -4,7 +4,8 @@
 Телефоны не собираем, deep pagination не делаем.
 """
 
-from ..normalize import Listing, extract_height_m, extract_text_flags
+from ..normalize import (Listing, extract_area_min, extract_heated,
+                         extract_height_m, extract_text_flags)
 from .base import fetch, next_data
 
 IMG_BASE = "https://rms.kufar.by/v1/gallery/"
@@ -58,6 +59,9 @@ def crawl(cfg: dict, raw_dir: str) -> list[Listing]:
                 floor=None,
                 floors=int(floors[0]) if isinstance(floors, list) and floors else None,
                 ceiling_height_m=extract_height_m(text),
+                area_min_m2=extract_area_min(text),
+                heated=(True if "Отопление" in improvements
+                        else extract_heated(text)),
                 metro=", ".join(p.get("metro", {}).get("vl") or []),
                 published_at=(ad.get("list_time") or "")[:19],
                 images=[IMG_BASE + i["path"] for i in (ad.get("images") or [])[:8]

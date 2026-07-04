@@ -5,7 +5,8 @@ robots.txt формально не приветствует произвольн
 минимальной: 1-2 страницы на категорию, 1 раз в день.
 """
 
-from ..normalize import Listing, extract_height_m, extract_text_flags
+from ..normalize import (Listing, extract_area_min, extract_heated,
+                         extract_height_m, extract_text_flags)
 from .base import fetch, next_data
 
 CURRENCIES = {933: "BYN", 840: "USD", 978: "EUR"}
@@ -59,6 +60,11 @@ def crawl(cfg: dict, raw_dir: str) -> list[Listing]:
                     property_type=CATEGORY_SLUGS.get(cat, cat),
                     floor=o.get("storey"), floors=o.get("storeys"),
                     ceiling_height_m=extract_height_m(text),
+                    area_min_m2=(o.get("areaMin")
+                                 if o.get("areaMin") and o.get("areaMax")
+                                 and o["areaMin"] < o["areaMax"]
+                                 else extract_area_min(text)),
+                    heated=(True if o.get("heating") else extract_heated(text)),
                     metro=o.get("metroStationName") or "",
                     published_at=(o.get("createdAt") or "")[:19],
                     updated_at=(o.get("updatedAt") or "")[:19],

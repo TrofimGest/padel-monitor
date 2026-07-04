@@ -15,7 +15,7 @@ from .adapters.base import AdapterStop
 from .config import load_config
 from .normalize import Listing
 from .rules import apply_rules, heuristic_score
-from .scoring import llm_score
+from .scoring import text_score
 
 ADAPTERS = {"realt": realt, "kufar": kufar, "megapolis": megapolis}
 
@@ -26,9 +26,9 @@ def score_listing(con, cfg: dict, lid: int, lst: Listing, row: dict):
     if ok:
         score = heuristic_score(lst, flags, cfg["profile"])
         if cfg["anthropic_api_key"]:
-            res = llm_score(cfg["anthropic_api_key"], cfg["scoring"]["llm_model"], row)
+            res = text_score(cfg["anthropic_api_key"], cfg["scoring"]["bulk_model"], row)
             if res:
-                # LLM уточняет, но не может поднять отказ правил
+                # LLM уточняет ранжирование, но не может поднять отказ правил
                 score = int((score + int(res.get("score", score))) / 2)
                 verdict = res.get("verdict", "")
                 notes = json.dumps(res, ensure_ascii=False)

@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS listings (
     price_byn REAL, price_usd REAL, price_per_m2 REAL,
     area_m2 REAL, address TEXT, town TEXT, district TEXT, region TEXT,
     property_type TEXT, floor INTEGER, floors INTEGER,
-    ceiling_height_m REAL, metro TEXT,
+    ceiling_height_m REAL, area_min_m2 REAL, heated INTEGER, metro TEXT,
     published_at TEXT, updated_at TEXT,
     images TEXT, attrs TEXT,
     first_seen_at TEXT, last_seen_at TEXT,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS scores (
     listing_id INTEGER PRIMARY KEY REFERENCES listings(id),
     rule_pass INTEGER, rule_reject_reason TEXT, rule_flags TEXT,
     score INTEGER, llm_verdict TEXT, llm_notes TEXT,
-    vision_notes TEXT, scored_at TEXT
+    vision_notes TEXT, final_score INTEGER, judge_notes TEXT, scored_at TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY,
@@ -45,11 +45,24 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+MIGRATIONS = [
+    "ALTER TABLE listings ADD COLUMN area_min_m2 REAL",
+    "ALTER TABLE listings ADD COLUMN heated INTEGER",
+    "ALTER TABLE scores ADD COLUMN final_score INTEGER",
+    "ALTER TABLE scores ADD COLUMN judge_notes TEXT",
+]
+
+
 def connect(db_path: str) -> sqlite3.Connection:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(db_path)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
+    for mig in MIGRATIONS:
+        try:
+            con.execute(mig)
+        except sqlite3.OperationalError:
+            pass  # колонка уже есть
     return con
 
 

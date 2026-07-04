@@ -25,6 +25,8 @@ class Listing:
     floor: int | None = None
     floors: int | None = None
     ceiling_height_m: float | None = None
+    area_min_m2: float | None = None   # минимальный сдаваемый кусок («от X м²»)
+    heated: bool | None = None         # None = неизвестно
     metro: str = ""
     published_at: str = ""
     updated_at: str = ""
@@ -61,6 +63,28 @@ def extract_height_m(text: str) -> float | None:
             v = float(m.group(1).replace(",", "."))
             if 2.0 <= v <= 30.0:
                 return v
+    return None
+
+
+UNHEATED_RE = re.compile(r"не\s?отаплива|неотаплива|без\s+отоплен|холодн\w+\s+(склад|ангар|помещен)", re.I)
+HEATED_RE = re.compile(r"отаплива|отоплен|т[её]пл\w+\s+(склад|ангар|помещен|пол)", re.I)
+AREA_FROM_RE = re.compile(r"от\s+(\d{2,6}(?:[.,]\d+)?)\s*(?:м2|м²|кв\.?\s*м|м\.?\s*кв)", re.I)
+
+
+def extract_heated(text: str) -> bool | None:
+    if UNHEATED_RE.search(text):
+        return False
+    if HEATED_RE.search(text):
+        return True
+    return None
+
+
+def extract_area_min(text: str) -> float | None:
+    m = AREA_FROM_RE.search(text)
+    if m:
+        v = float(m.group(1).replace(",", "."))
+        if 30 <= v <= 100000:
+            return v
     return None
 
 

@@ -1,6 +1,9 @@
 profile:
   min_area_m2: 180          # 1 корт: 20x10 + конструкция ~231 м²; берём с запасом вниз
   two_courts_area_m2: 450   # бонус: влезают 2 корта
+  area_ideal_min_m2: 230    # оптимальная полоса под клуб на 1-2 корта
+  area_ideal_max_m2: 1200
+  huge_area_m2: 2000        # больше и неделимо — штраф (не под 1-2 корта)
   min_height_m: 5.0         # высота указана и ниже — отказ
   good_height_m: 6.0
   great_height_m: 8.0
@@ -38,11 +41,14 @@ sources:
 telegram:
   chat_id: 337541656
 
-scoring:
-  llm_model: claude-sonnet-5          # используется, если задан ANTHROPIC_API_KEY
-  vision_model: claude-sonnet-5       # анализ фото top-N
-  vision_max_listings: 15
+scoring:                              # активно при заданном ANTHROPIC_API_KEY
+  bulk_model: claude-haiku-4-5        # массовый скоринг текста (ежедневно)
+  vision_model: claude-haiku-4-5      # скрининг фото кандидатов (еженедельно)
+  judge_model: claude-opus-4-8        # финальный судья: сравнение и итоговый score
+  vision_max_listings: 20
   vision_max_images: 4
+  judge_max_candidates: 15
+  prev_leaders: 5                     # сколько прошлых лидеров дать судье для сравнения
 
 db_path: data/monitor.db
 raw_dir: data/raw
