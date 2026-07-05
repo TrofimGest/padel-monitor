@@ -212,13 +212,15 @@ def candidates_main() -> int:
     dup = {r["listing_id"]: r["group_id"]
            for r in con.execute("SELECT listing_id, group_id FROM dup_groups")}
 
-    # обычные листинги (готовая аренда) — без госаукционов, у них своя секция
+    # обычные листинги (готовая аренда) — ЛУЧШЕЕ ИЗ АКТИВНОГО, а не только новое:
+    # хорошие варианты не должны исчезать из отчёта после первого показа.
+    # is_new помечает свежие (не показанные ранее); судья/отчёт выделяет их 🆕.
+    reported_ids = {r[0] for r in con.execute(
+        "SELECT DISTINCT listing_id FROM reported")}
     rows = con.execute("""
         SELECT l.*, s.score, s.rule_flags FROM listings l
         JOIN scores s ON s.listing_id = l.id
         WHERE s.rule_pass = 1 AND l.status = 'active' AND l.source != 'nca-auction'
-          AND l.first_seen_at >= datetime('now', '-7 days')
-          AND l.id NOT IN (SELECT listing_id FROM reported WHERE kind='new')
         ORDER BY s.score DESC, l.first_seen_at DESC""").fetchall()
 
     candidates, shown_groups = [], {}
@@ -229,7 +231,8 @@ def candidates_main() -> int:
             continue
         imgs = max_img if r["enriched_at"] else 4
         c = dict(_row_brief(r, cfg=cfg, max_images=imgs), pre_score=r["score"],
-                 flags=json.loads(r["rule_flags"] or "[]"), also_on=[])
+                 flags=json.loads(r["rule_flags"] or "[]"), also_on=[],
+                 is_new=r["id"] not in reported_ids)
         if gid is not None:
             shown_groups[gid] = c
         candidates.append(c)
@@ -242,13 +245,12 @@ def candidates_main() -> int:
         SELECT l.*, s.score, s.rule_flags FROM listings l
         JOIN scores s ON s.listing_id = l.id
         WHERE s.rule_pass = 1 AND l.status = 'active' AND l.source = 'nca-auction'
-          AND l.first_seen_at >= datetime('now', '-7 days')
-          AND l.id NOT IN (SELECT listing_id FROM reported WHERE kind='new')
         ORDER BY s.score DESC, l.first_seen_at DESC
         LIMIT ?""", (cfg["report"].get("auctions_top_n", 12),)).fetchall()
     auctions = [dict(_row_brief(r, cfg=cfg, max_images=4 if r["enriched_at"] else 0),
                      pre_score=r["score"],
                      flags=json.loads(r["rule_flags"] or "[]"),
+                     is_new=r["id"] not in reported_ids,
                      auction_date=json.loads(r["attrs"] or "{}").get("auction_date"))
                 for r in auc_rows]
 
