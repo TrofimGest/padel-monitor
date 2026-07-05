@@ -5,11 +5,19 @@ robots.txt формально не приветствует произвольн
 минимальной: 1-2 страницы на категорию, 1 раз в день.
 """
 
+import re
+
 from ..normalize import (Listing, extract_area_min, extract_heated,
                          extract_height_m, extract_text_flags)
 from .base import fetch, next_data
 
 CURRENCIES = {933: "BYN", 840: "USD", 978: "EUR"}
+
+DETAIL_HREF_RE = re.compile(r'href="/(rent-[a-z-]+)/object/(\d+)/')
+# слаг detail-страницы != слагу каталога (production -> rent-proizvodstvo и т.п.)
+DETAIL_SLUGS = {"warehouses": "rent-warehouses", "storages": "rent-pomeschenie",
+                "production": "rent-proizvodstvo", "services": "rent-services",
+                "shops": "rent-shops"}
 
 # objectType/category → человекочитаемый тип (наблюдаемые значения дополнять)
 CATEGORY_SLUGS = {
@@ -42,13 +50,18 @@ def crawl(cfg: dict, raw_dir: str) -> list[Listing]:
                 url += f"&page={page}"
             html = fetch(url, raw_dir, f"realt_{cat}_p{page}", cfg.get("delay_s", 3))
             objs = next_data(html, url)["props"]["pageProps"].get("objects") or []
+            # фактические ссылки карточек из HTML: code -> slug
+            hrefs = {code: slug for slug, code in DETAIL_HREF_RE.findall(html)}
             for o in objs:
                 text = f"{o.get('title') or ''}\n{o.get('headline') or ''}\n{o.get('description') or ''}"
                 byn, usd, ppm2 = _price_fields(o)
                 lst = Listing(
                     source="realt",
                     source_id=str(o["code"]),
-                    url=f"https://realt.by/rent-{cat}/object/{o['code']}/",
+                    url="https://realt.by/{}/object/{}/".format(
+                        hrefs.get(str(o["code"]),
+                                  DETAIL_SLUGS.get(cat, f"rent-{cat}")),
+                        o["code"]),
                     title=(o.get("headline") or o.get("title") or "")[:300],
                     description=(o.get("description") or "")[:4000],
                     price_byn=byn, price_usd=usd, price_per_m2=ppm2,

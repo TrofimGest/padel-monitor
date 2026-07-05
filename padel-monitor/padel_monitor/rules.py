@@ -134,5 +134,5 @@ def heuristic_score(lst: Listing, flags: list[str], profile: dict) -> int:
     if "unheated" in flags:
         s = min(s, 55)
     if area is not None and area > ideal_max:
-        s = min(s, 72)  # минимальный сдаваемый кусок больше, чем нужно 1-2 кортам
+        s = min(s, 65)  # минимальный сдаваемый кусок больше, чем нужно 1-2 кортам
     return s
