@@ -46,13 +46,11 @@ sources:
     urls:
       - https://megapolis-real.by/realt/skladskaya-nedvizhimost/arenda/
       - https://megapolis-real.by/realt/torgovaya-nedvizhimost/arenda/
-  realt_auctions:
-    enabled: false          # госаукционы аренды: тонкий сигнал (realt.by — архив),
-                            # каноническая au.nca.by гео-заблокирована. См. pi/site-specs/auctions.md
-    delay_s: 4
-    max_lots: 10            # сколько активных лотов детализировать за прогон
-    urls:
-      - https://realt.by/auctions/arenda-commercheskoi-nedvigimosti/
+  nca_auctions:             # госаукционы аренды (au.nca.by) — часто дешевле рынка
+    enabled: true           # ТРЕБУЕТ белорусский IP (split-tunnel или BY-VPS)!
+    delay_s: 4              # не с BY-IP получишь 403 -> AdapterStop, остальное живёт
+    square_min: 180         # серверный фильтр площади (совпадает с профилем)
+    page_size: 500          # все лоты одним запросом
 
 telegram:
   chat_id: 337541656
@@ -61,6 +59,7 @@ telegram:
 # модель выбирается в Pi через /model. Здесь только параметры выдачи данных.
 report:
   prev_leaders: 5                     # сколько прошлых лидеров отдавать судье
+  auctions_top_n: 12                  # сколько госаукционов-лидов в отдельной секции
   alert_max_per_day: 3                # максимум мгновенных алертов-эталонов в сутки
   alert_price_drop_pct: 7             # порог снижения цены для алерта, %
   enrich_top_n: 20                    # сколько кандидатов обогащать detail-страницами

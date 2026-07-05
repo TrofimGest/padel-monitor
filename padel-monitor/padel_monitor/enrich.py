@@ -12,12 +12,13 @@ import sys
 import traceback
 
 from . import db
-from .adapters import kufar, realt
+from .adapters import kufar, nca_auctions, realt
 from .adapters.base import AdapterStop, fetch
 from .config import load_config
 from .normalize import Listing
 
-PARSERS = {"realt": realt.parse_detail, "kufar": kufar.parse_detail}
+PARSERS = {"realt": realt.parse_detail, "kufar": kufar.parse_detail,
+           "nca-auction": nca_auctions.parse_detail}
 
 
 def _listing_from_row(r) -> Listing:
@@ -53,7 +54,7 @@ def main() -> int:
     rows = con.execute("""
         SELECT l.* FROM listings l JOIN scores s ON s.listing_id = l.id
         WHERE s.rule_pass = 1 AND l.status = 'active' AND l.enriched_at IS NULL
-          AND l.source IN ('realt', 'kufar')
+          AND l.source IN ('realt', 'kufar', 'nca-auction')
           AND l.first_seen_at >= datetime('now', '-7 days')
           AND l.id NOT IN (SELECT listing_id FROM reported WHERE kind='new')
         ORDER BY s.score DESC LIMIT ?""", (top_n,)).fetchall()

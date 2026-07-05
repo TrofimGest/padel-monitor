@@ -22,7 +22,7 @@ import traceback
 import httpx
 
 from . import db, dedup
-from .adapters import kufar, megapolis, realt, realt_auctions
+from .adapters import kufar, megapolis, nca_auctions, realt
 from .adapters.base import AdapterStop
 from .config import load_config
 from .geo import nearest_competitor, nearest_metro, yandex_map_url
@@ -30,7 +30,7 @@ from .normalize import Listing
 from .rules import apply_rules, distance_km, heuristic_score
 
 ADAPTERS = {"realt": realt, "kufar": kufar, "megapolis": megapolis,
-            "realt_auctions": realt_auctions}
+            "nca_auctions": nca_auctions}
 
 
 def _score_listing(con, cfg: dict, lid: int, lst: Listing):
@@ -212,10 +212,11 @@ def candidates_main() -> int:
     dup = {r["listing_id"]: r["group_id"]
            for r in con.execute("SELECT listing_id, group_id FROM dup_groups")}
 
+    # обычные листинги (готовая аренда) — без госаукционов, у них своя секция
     rows = con.execute("""
         SELECT l.*, s.score, s.rule_flags FROM listings l
         JOIN scores s ON s.listing_id = l.id
-        WHERE s.rule_pass = 1 AND l.status = 'active'
+        WHERE s.rule_pass = 1 AND l.status = 'active' AND l.source != 'nca-auction'
           AND l.first_seen_at >= datetime('now', '-7 days')
           AND l.id NOT IN (SELECT listing_id FROM reported WHERE kind='new')
         ORDER BY s.score DESC, l.first_seen_at DESC""").fetchall()
@@ -234,6 +235,22 @@ def candidates_main() -> int:
         candidates.append(c)
         if len(candidates) >= args.limit:
             break
+
+    # госаукционы аренды — отдельная секция (дешевле рынка, но нужны торги +
+    # проверка: площадь у мультиюнитовых зданий бывает по всему зданию)
+    auc_rows = con.execute("""
+        SELECT l.*, s.score, s.rule_flags FROM listings l
+        JOIN scores s ON s.listing_id = l.id
+        WHERE s.rule_pass = 1 AND l.status = 'active' AND l.source = 'nca-auction'
+          AND l.first_seen_at >= datetime('now', '-7 days')
+          AND l.id NOT IN (SELECT listing_id FROM reported WHERE kind='new')
+        ORDER BY s.score DESC, l.first_seen_at DESC
+        LIMIT ?""", (cfg["report"].get("auctions_top_n", 12),)).fetchall()
+    auctions = [dict(_row_brief(r, cfg=cfg, max_images=4 if r["enriched_at"] else 0),
+                     pre_score=r["score"],
+                     flags=json.loads(r["rule_flags"] or "[]"),
+                     auction_date=json.loads(r["attrs"] or "{}").get("auction_date"))
+                for r in auc_rows]
 
     # рыночный контекст для оценки цены: BYN/м² по активным прошедшим фильтр
     ppm2 = sorted(v[0] for v in con.execute("""
@@ -298,6 +315,7 @@ def candidates_main() -> int:
         "economics": cfg.get("economics", {}),
         "market": market,
         "candidates": candidates,
+        "auctions": auctions,
         "watchlist": watchlist,
         "previous_leaders": previous,
         "price_changes": price_changes,
