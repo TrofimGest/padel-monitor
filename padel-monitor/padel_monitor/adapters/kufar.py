@@ -62,6 +62,8 @@ def crawl(cfg: dict, raw_dir: str) -> list[Listing]:
                 area_min_m2=extract_area_min(text),
                 heated=(True if "Отопление" in improvements
                         else extract_heated(text)),
+                lat=(p.get("coordinates", {}).get("v") or [None, None])[1],
+                lon=(p.get("coordinates", {}).get("v") or [None, None])[0],
                 metro=", ".join(p.get("metro", {}).get("vl") or []),
                 published_at=(ad.get("list_time") or "")[:19],
                 images=[IMG_BASE + i["path"] for i in (ad.get("images") or [])[:8]

@@ -8,9 +8,21 @@
 отсутствие отопления, потолок score при неизвестной высоте (до проверки фото).
 """
 
+import math
 import re
 
 from .normalize import Listing
+
+
+def distance_km(lat: float | None, lon: float | None, profile: dict) -> float | None:
+    """Расстояние до центра Минска по координатам объявления (гаверсинус)."""
+    if lat is None or lon is None:
+        return None
+    lat1, lon1 = math.radians(profile["center_lat"]), math.radians(profile["center_lon"])
+    lat2, lon2 = math.radians(lat), math.radians(lon)
+    a = (math.sin((lat2 - lat1) / 2) ** 2
+         + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2)
+    return round(6371 * 2 * math.asin(math.sqrt(a)), 1)
 
 
 def effective_area(lst: Listing) -> float | None:
@@ -23,10 +35,23 @@ def apply_rules(lst: Listing, profile: dict) -> tuple[bool, str, list[str]]:
     """Возвращает (прошло, причина отказа, флаги)."""
     flags: list[str] = []
     text = f"{lst.title} {lst.description}".lower()
-    place = f"{lst.town} {lst.district} {lst.region} {lst.address}".lower()
 
-    if not any(r in place for r in profile["regions"]):
-        return False, f"регион: {lst.town or lst.address or '?'}", flags
+    # Локация: по координатам (приоритет), иначе текстовый fallback.
+    # Внимание: region НЕ проверяем — «Минская область» содержит «минск»
+    # и раньше пропускала любые деревни области.
+    dist = distance_km(lst.lat, lst.lon, profile)
+    if dist is not None:
+        if dist > profile["max_distance_km"]:
+            return False, f"далеко: {dist:.0f} км от центра Минска", flags
+        if dist <= profile["near_distance_km"]:
+            flags.append("near")
+        elif dist > profile["ok_distance_km"]:
+            flags.append("far")
+    else:
+        flags.append("location_unknown")
+        place = f"{lst.town} {lst.district}".lower()
+        if not any(r in place for r in profile["regions"]):
+            return False, f"регион: {lst.town or lst.address or '?'}", flags
 
     area = effective_area(lst)
     if area is not None and lst.area_m2 and area < lst.area_m2:
@@ -108,6 +133,13 @@ def heuristic_score(lst: Listing, flags: list[str], profile: dict) -> int:
         s -= 22             # падел = круглогодичный клуб, отопление критично
     elif lst.heated:
         s += 8
+
+    if "near" in flags:
+        s += 10          # город: клиентам удобно добираться
+    if "far" in flags:
+        s -= 10
+    if "location_unknown" in flags:
+        s -= 4
 
     if lst.floor == 1:
         s += 6

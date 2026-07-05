@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS listings (
     price_byn REAL, price_usd REAL, price_per_m2 REAL,
     area_m2 REAL, address TEXT, town TEXT, district TEXT, region TEXT,
     property_type TEXT, floor INTEGER, floors INTEGER,
-    ceiling_height_m REAL, area_min_m2 REAL, heated INTEGER, metro TEXT,
+    ceiling_height_m REAL, area_min_m2 REAL, heated INTEGER,
+    lat REAL, lon REAL, metro TEXT,
     published_at TEXT, updated_at TEXT,
     images TEXT, attrs TEXT,
     first_seen_at TEXT, last_seen_at TEXT,
@@ -50,6 +51,8 @@ MIGRATIONS = [
     "ALTER TABLE listings ADD COLUMN heated INTEGER",
     "ALTER TABLE scores ADD COLUMN final_score INTEGER",
     "ALTER TABLE scores ADD COLUMN judge_notes TEXT",
+    "ALTER TABLE listings ADD COLUMN lat REAL",
+    "ALTER TABLE listings ADD COLUMN lon REAL",
 ]
 
 

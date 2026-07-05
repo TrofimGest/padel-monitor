@@ -55,6 +55,7 @@ def crawl(cfg: dict, raw_dir: str) -> list[Listing]:
             for o in objs:
                 text = f"{o.get('title') or ''}\n{o.get('headline') or ''}\n{o.get('description') or ''}"
                 byn, usd, ppm2 = _price_fields(o)
+                loc = o.get("location") or [None, None]  # [lon, lat]
                 lst = Listing(
                     source="realt",
                     source_id=str(o["code"]),
@@ -78,6 +79,7 @@ def crawl(cfg: dict, raw_dir: str) -> list[Listing]:
                                  and o["areaMin"] < o["areaMax"]
                                  else extract_area_min(text)),
                     heated=(True if o.get("heating") else extract_heated(text)),
+                    lat=loc[1], lon=loc[0],
                     metro=o.get("metroStationName") or "",
                     published_at=(o.get("createdAt") or "")[:19],
                     updated_at=(o.get("updatedAt") or "")[:19],

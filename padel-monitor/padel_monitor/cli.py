@@ -24,7 +24,7 @@ from .adapters import kufar, megapolis, realt
 from .adapters.base import AdapterStop
 from .config import load_config
 from .normalize import Listing
-from .rules import apply_rules, heuristic_score
+from .rules import apply_rules, distance_km, heuristic_score
 
 ADAPTERS = {"realt": realt, "kufar": kufar, "megapolis": megapolis}
 
@@ -94,7 +94,8 @@ def _row_brief(r, max_desc: int = 1500, max_images: int = 4) -> dict:
         "heated": None if r["heated"] is None else bool(r["heated"]),
         "price_byn": r["price_byn"], "price_usd": r["price_usd"],
         "price_per_m2": r["price_per_m2"],
-        "address": r["address"], "metro": r["metro"],
+        "address": r["address"], "town": r["town"], "district": r["district"],
+        "metro": r["metro"],
         "property_type": r["property_type"], "floor": r["floor"],
         "images": json.loads(r["images"] or "[]")[:max_images],
         "attrs": json.loads(r["attrs"] or "{}"),
@@ -118,7 +119,20 @@ def candidates_main() -> int:
         ORDER BY s.score DESC, l.first_seen_at DESC LIMIT ?""",
         (args.limit,)).fetchall()
     candidates = [dict(_row_brief(r), pre_score=r["score"],
+                       distance_km=distance_km(r["lat"], r["lon"], cfg["profile"]),
                        flags=json.loads(r["rule_flags"] or "[]")) for r in rows]
+
+    # рыночный контекст для оценки цены: BYN/м² по активным прошедшим фильтр
+    ppm2 = sorted(v[0] for v in con.execute("""
+        SELECT l.price_per_m2 FROM listings l JOIN scores s ON s.listing_id = l.id
+        WHERE s.rule_pass = 1 AND l.status = 'active'
+          AND l.price_per_m2 BETWEEN 2 AND 200"""))
+    market = {"note": "BYN за м² в месяц, по активным объявлениям, прошедшим фильтр"}
+    if ppm2:
+        market.update(
+            count=len(ppm2),
+            median_price_per_m2_byn=ppm2[len(ppm2) // 2],
+            p25=ppm2[len(ppm2) // 4], p75=ppm2[3 * len(ppm2) // 4])
 
     prev = con.execute("""
         SELECT l.*, s.final_score, s.judge_notes FROM listings l
@@ -148,6 +162,7 @@ def candidates_main() -> int:
 
     print(json.dumps({
         "profile": cfg["profile"],
+        "market": market,
         "candidates": candidates,
         "previous_leaders": previous,
         "price_changes": price_changes,
@@ -223,6 +238,7 @@ def rescore_main() -> int:
             floors=r["floors"], ceiling_height_m=r["ceiling_height_m"],
             area_min_m2=r["area_min_m2"],
             heated=None if r["heated"] is None else bool(r["heated"]),
+            lat=r["lat"], lon=r["lon"],
             metro=r["metro"] or "",
             images=json.loads(r["images"] or "[]"),
             attrs=json.loads(r["attrs"] or "{}"),

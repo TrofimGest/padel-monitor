@@ -27,6 +27,8 @@ class Listing:
     ceiling_height_m: float | None = None
     area_min_m2: float | None = None   # минимальный сдаваемый кусок («от X м²»)
     heated: bool | None = None         # None = неизвестно
+    lat: float | None = None
+    lon: float | None = None
     metro: str = ""
     published_at: str = ""
     updated_at: str = ""
