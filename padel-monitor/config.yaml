@@ -46,6 +46,13 @@ sources:
     urls:
       - https://megapolis-real.by/realt/skladskaya-nedvizhimost/arenda/
       - https://megapolis-real.by/realt/torgovaya-nedvizhimost/arenda/
+  realt_auctions:
+    enabled: false          # госаукционы аренды: тонкий сигнал (realt.by — архив),
+                            # каноническая au.nca.by гео-заблокирована. См. pi/site-specs/auctions.md
+    delay_s: 4
+    max_lots: 10            # сколько активных лотов детализировать за прогон
+    urls:
+      - https://realt.by/auctions/arenda-commercheskoi-nedvigimosti/
 
 telegram:
   chat_id: 337541656

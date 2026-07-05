@@ -22,14 +22,15 @@ import traceback
 import httpx
 
 from . import db, dedup
-from .adapters import kufar, megapolis, realt
+from .adapters import kufar, megapolis, realt, realt_auctions
 from .adapters.base import AdapterStop
 from .config import load_config
 from .geo import nearest_competitor, nearest_metro, yandex_map_url
 from .normalize import Listing
 from .rules import apply_rules, distance_km, heuristic_score
 
-ADAPTERS = {"realt": realt, "kufar": kufar, "megapolis": megapolis}
+ADAPTERS = {"realt": realt, "kufar": kufar, "megapolis": megapolis,
+            "realt_auctions": realt_auctions}
 
 
 def _score_listing(con, cfg: dict, lid: int, lst: Listing):
