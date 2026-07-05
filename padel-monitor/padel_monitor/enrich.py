@@ -78,6 +78,15 @@ def main() -> int:
             errors += 1
             continue
 
+        # обогащение НЕ должно ухудшать ключевые падел-поля:
+        # - высоту не понижаем (берём макс из старой и новой — потолок, не дверь);
+        # - подтверждённое отопление не переворачиваем (только заполняем пустое).
+        if fields.get("ceiling_height_m") is not None and r["ceiling_height_m"]:
+            fields["ceiling_height_m"] = max(fields["ceiling_height_m"],
+                                             r["ceiling_height_m"])
+        if "heated" in fields and r["heated"] is not None:
+            fields.pop("heated")
+
         sets, vals = [], []
         for k, v in fields.items():
             sets.append(f"{k}=?")

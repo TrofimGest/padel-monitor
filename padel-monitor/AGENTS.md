@@ -20,7 +20,8 @@
 
 ```bash
 uv sync --all-groups          # окружение (dev-группа включает browser-harness)
-uv run padel-collect          # сбор источников -> SQLite; JSON-сводка в stdout
+uv run padel-inbox            # забрать команды из Telegram (отпало/наблюдать/…)
+uv run padel-collect          # сбор -> SQLite (сам тоже забирает команды)
 uv run padel-candidates       # кандидаты недели + контекст судьи (JSON)
 uv run padel-save-verdicts --file verdicts.json
 uv run padel-telegram --file report.html

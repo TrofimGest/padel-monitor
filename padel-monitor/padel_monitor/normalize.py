@@ -59,13 +59,16 @@ HEIGHT_RE2 = re.compile(
 
 
 def extract_height_m(text: str) -> float | None:
+    """Максимальная упомянутая высота потолка. Берём МАКС, а не первую: в
+    описании часто сначала идёт высота ворот/двери (2-4 м), а потолок выше —
+    первая-по-тексту логика роняла хорошие залы (10 м -> 2.5 м)."""
+    best = None
     for rx in (HEIGHT_RE, HEIGHT_RE2):
-        m = rx.search(text)
-        if m:
+        for m in rx.finditer(text):
             v = float(m.group(1).replace(",", "."))
-            if 2.0 <= v <= 30.0:
-                return v
-    return None
+            if 2.0 <= v <= 30.0 and (best is None or v > best):
+                best = v
+    return best
 
 
 UNHEATED_RE = re.compile(r"не\s?отаплива|неотаплива|без\s+отоплен|холодн\w+\s+(склад|ангар|помещен)", re.I)

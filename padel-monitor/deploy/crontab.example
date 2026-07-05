@@ -3,7 +3,10 @@ CRON_TZ=Europe/Minsk
 # uv и pi должны быть в PATH cron-окружения
 PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin
 
-# ежедневный детерминированный сбор в 08:40 (без LLM)
+# приём команд из Telegram (отпало/наблюдать/…) — часто, это дёшево (1 запрос)
+*/15 * * * * cd /opt/padel-monitor && uv run padel-inbox >> data/inbox.log 2>&1
+
+# ежедневный детерминированный сбор в 08:40 (сам тоже забирает команды)
 40 8 * * * cd /opt/padel-monitor && uv run padel-collect >> data/collect.log 2>&1
 
 # недельный отчёт: воскресенье 18:00 — Pi-агент (скоринг, фото, судья, Telegram)

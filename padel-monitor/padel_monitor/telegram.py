@@ -35,5 +35,15 @@ def send_document(token: str, chat_id: int, path: str, caption: str = ""):
     r.raise_for_status()
 
 
+def get_updates(token: str, offset: int = 0, timeout: int = 0) -> list[dict]:
+    """Входящие сообщения (pull). offset = last_update_id+1 подтверждает прошлые."""
+    r = httpx.get(f"https://api.telegram.org/bot{token}/getUpdates",
+                  params={"offset": offset, "timeout": timeout,
+                          "allowed_updates": '["message"]'},
+                  timeout=timeout + 20)
+    r.raise_for_status()
+    return r.json().get("result", [])
+
+
 def esc(s) -> str:
     return html.escape(str(s or ""))

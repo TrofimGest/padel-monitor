@@ -13,6 +13,7 @@ dependencies = [
 [project.scripts]
 padel-collect = "padel_monitor.cli:collect_main"
 padel-enrich = "padel_monitor.cli:enrich_main"
+padel-inbox = "padel_monitor.cli:inbox_main"
 padel-candidates = "padel_monitor.cli:candidates_main"
 padel-save-verdicts = "padel_monitor.cli:save_verdicts_main"
 padel-telegram = "padel_monitor.cli:telegram_main"

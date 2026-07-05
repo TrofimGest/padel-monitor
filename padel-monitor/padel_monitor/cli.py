@@ -129,6 +129,13 @@ def _run_alerts(con, cfg: dict):
 def collect_main() -> int:
     cfg = load_config()
     con = db.connect(cfg["db_path"])
+    # забрать команды из Telegram (отпало/наблюдать/…) — до сбора
+    try:
+        from .inbox import process as inbox_process
+        inbox = inbox_process(con, cfg)
+    except Exception as e:
+        print(f"inbox error (не критично): {e}", file=sys.stderr)
+        inbox = {"error": str(e)}
     summary, any_ok = {}, False
     for name, mod in ADAPTERS.items():
         src_cfg = cfg["sources"].get(name) or {}
@@ -169,7 +176,7 @@ def collect_main() -> int:
         except httpx.HTTPError:
             pass
     print(json.dumps({"ok": any_ok, "sources": summary,
-                      "dup_groups": dup_groups, "alerts": alerts},
+                      "dup_groups": dup_groups, "alerts": alerts, "inbox": inbox},
                      ensure_ascii=False, indent=1))
     return 0 if any_ok else 1
 
@@ -211,6 +218,8 @@ def candidates_main() -> int:
     # карта дублей: listing_id -> group_id (для склейки realt+kufar)
     dup = {r["listing_id"]: r["group_id"]
            for r in con.execute("SELECT listing_id, group_id FROM dup_groups")}
+    # скрытые пользователем варианты (команда «отпало N» из Telegram)
+    vetoed = db.vetoed_ids(con)
 
     # обычные листинги (готовая аренда) — ЛУЧШЕЕ ИЗ АКТИВНОГО, а не только новое:
     # хорошие варианты не должны исчезать из отчёта после первого показа.
@@ -225,6 +234,8 @@ def candidates_main() -> int:
 
     candidates, shown_groups = [], {}
     for r in rows:
+        if r["id"] in vetoed:
+            continue
         gid = dup.get(r["id"])
         if gid is not None and gid in shown_groups:
             shown_groups[gid]["also_on"].append(r["url"])   # дубль -> к представителю
@@ -252,7 +263,7 @@ def candidates_main() -> int:
                      flags=json.loads(r["rule_flags"] or "[]"),
                      is_new=r["id"] not in reported_ids,
                      auction_date=json.loads(r["attrs"] or "{}").get("auction_date"))
-                for r in auc_rows]
+                for r in auc_rows if r["id"] not in vetoed]
 
     # рыночный контекст для оценки цены: BYN/м² по активным прошедшим фильтр
     ppm2 = sorted(v[0] for v in con.execute("""
@@ -278,25 +289,25 @@ def candidates_main() -> int:
                      judge_why=(json.loads(p["judge_notes"]) or {}).get("why", "")
                      if p["judge_notes"] else "") for p in prev]
 
-    # watchlist: варианты со статусом наблюдения из последних вердиктов судьи
+    # watchlist: варианты, помеченные пользователем из Telegram (watch/finalist/
+    # called/visited) — детерминированно из user_actions
     WATCH = {"watch", "called", "visited", "finalist"}
     watchlist = []
-    for r in con.execute("""
-        SELECT l.*, s.final_score, s.judge_notes FROM listings l
-        JOIN scores s ON s.listing_id = l.id
-        WHERE l.status='active' AND s.judge_notes IS NOT NULL""").fetchall():
-        try:
-            note = json.loads(r["judge_notes"])
-        except (json.JSONDecodeError, TypeError):
+    for lid, a in db.latest_actions(con).items():
+        if a["action"] not in WATCH:
             continue
-        if note.get("status") in WATCH:
-            recent = [dict(e) for e in con.execute("""
-                SELECT kind, ts, old_value, new_value FROM events
-                WHERE listing_id=? AND ts >= datetime('now','-7 days')""", (r["id"],))]
-            watchlist.append(dict(_row_brief(r, cfg=cfg, max_desc=200, max_images=0),
-                                  final_score=r["final_score"],
-                                  status=note.get("status"), note=note.get("why", ""),
-                                  recent_events=recent))
+        r = con.execute("SELECT l.*, s.final_score FROM listings l "
+                        "LEFT JOIN scores s ON s.listing_id=l.id WHERE l.id=?",
+                        (lid,)).fetchone()
+        if not r or r["status"] != "active":
+            continue
+        recent = [dict(e) for e in con.execute("""
+            SELECT kind, ts, old_value, new_value FROM events
+            WHERE listing_id=? AND ts >= datetime('now','-7 days')""", (lid,))]
+        watchlist.append(dict(_row_brief(r, cfg=cfg, max_desc=200, max_images=0),
+                              final_score=r["final_score"],
+                              status=a["action"], note=a["note"] or "",
+                              recent_events=recent))
 
     price_changes = [dict(r) for r in con.execute("""
         SELECT l.title, l.url, e.old_value, e.new_value
@@ -312,6 +323,11 @@ def candidates_main() -> int:
         SELECT source, COUNT(*) n, SUM(ok) ok_n, MAX(finished_at) last
         FROM runs WHERE started_at >= datetime('now', '-7 days') GROUP BY source""")]
 
+    # заметки пользователя по вариантам (для контекста судье)
+    user_notes = [{"id": lid, "action": a["action"], "note": a["note"]}
+                  for lid, a in db.latest_actions(con).items()
+                  if a["action"] in ("note", "called", "visited") and a["note"]]
+
     print(json.dumps({
         "profile": cfg["profile"],
         "economics": cfg.get("economics", {}),
@@ -319,6 +335,7 @@ def candidates_main() -> int:
         "candidates": candidates,
         "auctions": auctions,
         "watchlist": watchlist,
+        "user_notes": user_notes,
         "previous_leaders": previous,
         "price_changes": price_changes,
         "gone": gone,
@@ -385,6 +402,11 @@ def telegram_main() -> int:
 
 def enrich_main() -> int:
     from .enrich import main
+    return main()
+
+
+def inbox_main() -> int:
+    from .inbox import main
     return main()
 
 

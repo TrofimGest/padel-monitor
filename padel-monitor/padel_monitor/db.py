@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS dup_groups (
     listing_id INTEGER PRIMARY KEY REFERENCES listings(id),
     group_id INTEGER
 );
+CREATE TABLE IF NOT EXISTS user_actions (
+    listing_id INTEGER, action TEXT, note TEXT, ts TEXT
+);
+CREATE TABLE IF NOT EXISTS bot_state (key TEXT PRIMARY KEY, value TEXT);
 """
 
 
@@ -171,3 +175,35 @@ def alerts_today(con, kind: str = None) -> int:
         q += " AND kind=?"
         args = (kind,)
     return con.execute(q, args).fetchone()[0]
+
+
+# --- пользовательские действия из Telegram (veto/watch/finalist/note) ---
+
+def set_action(con, listing_id: int, action: str, note: str = None):
+    con.execute("INSERT INTO user_actions (listing_id, action, note, ts) "
+                "VALUES (?,?,?,?)", (listing_id, action, note, now_iso()))
+
+
+def latest_actions(con) -> dict:
+    """listing_id -> {'action','note','ts'} по последнему действию."""
+    out = {}
+    for r in con.execute("SELECT listing_id, action, note, ts FROM user_actions "
+                         "ORDER BY ts ASC"):
+        out[r["listing_id"]] = {"action": r["action"], "note": r["note"],
+                                "ts": r["ts"]}
+    return out
+
+
+def vetoed_ids(con) -> set:
+    return {lid for lid, a in latest_actions(con).items() if a["action"] == "veto"}
+
+
+def get_state(con, key: str, default=None):
+    r = con.execute("SELECT value FROM bot_state WHERE key=?", (key,)).fetchone()
+    return r["value"] if r else default
+
+
+def set_state(con, key: str, value: str):
+    con.execute("INSERT INTO bot_state (key, value) VALUES (?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, str(value)))
