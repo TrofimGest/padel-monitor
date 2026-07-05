@@ -1,88 +1,148 @@
-# Падел-монитор (на базе Pi)
+# Падел-монитор
 
-Мониторинг аренды помещений под падел-клуб (Минск, 1–2 корта).
+Ищет в Минске и окрестностях помещения под падел-клуб (1–2 корта): ежедневно
+собирает объявления с realt.by и re.kufar.by, фильтрует по падел-критериям
+(площадь, высота, отопление, колонны), раз в неделю Pi-агент оценивает
+кандидатов (включая фотографии), сравнивает с прошлыми находками и присылает
+отчёт в Telegram.
 
-Архитектура двухслойная:
+Устройство двухслойное: **Python-коллекторы** (детерминированный сбор, только
+через uv) + **Pi-агент** (LLM-скоринг, vision, судья, отправка отчёта; модели —
+по подписке через `pi /login`, единый LLM-доступ через pi-ai).
 
-- **Python-коллекторы (uv)** — детерминированный сбор: HTTP → парсинг →
-  SQLite → жёсткие правила → эвристический pre-score. Bounded JSON-контракты,
-  ноль LLM-кода.
-- **Pi (pi-mono)** — агентный рантайм: LLM-скоринг, vision-анализ фото, судья
-  со сравнением с прошлыми лидерами, композиция и отправка недельного отчёта.
-  Пакеты: `pi-coding-agent` (CLI/TUI), `pi-agent-core` (рантайм),
-  `pi-ai` (единый multi-provider LLM API — весь доступ к моделям идёт через
-  него, своих LLM-клиентов в проекте нет).
+---
 
-Полная архитектура: `../docs/final-architecture.md`.
+## Что нужно установить
 
-## Установка
+| Инструмент | Зачем | Как поставить |
+|---|---|---|
+| [uv](https://docs.astral.sh/uv/) | Python-слой (никаких pip/poetry) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Node.js ≥ 20 | рантайм для Pi | nodejs.org или nvm |
+| Pi | агентный рантайм | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent` |
+
+Python отдельно ставить не нужно — uv сам скачает нужный интерпретатор.
+
+## Первый запуск (5 шагов)
+
+Все команды — из каталога `padel-monitor/`.
+
+**1. Окружение Python:**
 
 ```bash
-# Python-слой (только uv; pip/poetry не используются)
-uv sync --all-groups        # включая dev-группу с browser-harness
-
-# Pi
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+uv sync --all-groups
 ```
 
-`.env` в корне проекта: `TELEGRAM_BOT_TOKEN=...` (+ опционально
-`HEALTHCHECKS_URL=...`).
+Создаст `.venv` со всеми зависимостями, включая dev-группу (browser-harness).
 
-### Аутентификация LLM: подписка через Pi
+**2. Секреты.** Создайте `.env` по образцу `.env.example`:
 
-Свой OAuth не реализуем — используется штатная механика Pi:
-
-```bash
-pi            # интерактивно
-/login        # выбрать «OpenAI ChatGPT Plus/Pro (Codex)» (или Anthropic Pro/Max)
-/model        # выбрать модель (для vision-анализа фото нужна модель с image input)
+```
+TELEGRAM_BOT_TOKEN=1234567890:AA...   # токен бота от @BotFather
+HEALTHCHECKS_URL=                      # опционально, см. «Надёжность»
 ```
 
-Токены живут в `~/.pi/agent/auth.json` (авто-рефреш), в проект не попадают.
+`chat_id` получателя уже задан в `config.yaml` (`telegram.chat_id`). Чтобы
+бот мог писать вам, один раз отправьте ему `/start`.
 
-## Запуск
+**3. Логин Pi в LLM-провайдера** (свои ключи не нужны):
 
 ```bash
-uv run padel-collect                  # ежедневный сбор (детерминированный)
-pi -p "Запусти недельный отчёт по скиллу padel-weekly-report"   # недельный отчёт
+pi          # откроется интерактивный режим
+/login      # выберите «OpenAI ChatGPT Plus/Pro (Codex)» или «Anthropic Pro/Max»
+/model      # выберите модель; для анализа фото нужна модель с поддержкой изображений
 ```
 
-Pi подхватывает `AGENTS.md` и скиллы из `.pi/skills/`:
+Токены сохраняются в `~/.pi/agent/auth.json` (авто-обновление), в проект не
+попадают. Без логина недельный отчёт не заработает — Pi ответит
+`No API key found for the selected model`.
 
-- `padel-weekly-report` — сбор → кандидаты → фото → судейство → вердикты в
-  базу → отчёт в Telegram;
-- `collector-repair` — диагностика/ремонт сломавшегося адаптера.
-
-CLI-контракты (используются скиллами, пригодны и для ручной отладки):
+**4. Проверка сбора:**
 
 ```bash
-uv run padel-candidates               # JSON: кандидаты + прошлые лидеры + контекст
-uv run padel-save-verdicts --file verdicts.json
-uv run padel-telegram --file report.html
-uv run padel-rescore                  # после изменения правил в config.yaml/rules.py
+uv run padel-collect
+```
+
+Ожидаемый вывод — JSON-сводка вида:
+
+```json
+{"ok": true, "sources": {"realt": {"ok": true, "found": 300, "new": 3, ...},
+ "kufar": {"ok": true, "found": 84, ...}, "megapolis": {"ok": null, "skipped": true}}}
+```
+
+`megapolis: skipped` — это норма (см. «Известные ограничения»).
+
+**5. Первый недельный отчёт:**
+
+```bash
+pi -p "Запусти недельный отчёт по скиллу padel-weekly-report" --no-session
+```
+
+Pi сам вызовет сбор, прочитает кандидатов, посмотрит фото, поставит оценки,
+запишет вердикты в базу и отправит отчёт в Telegram. Первый прогон стоит
+посмотреть глазами.
+
+---
+
+## Как этим пользоваться
+
+- **Ничего не делать.** Настройте cron (ниже) — сбор идёт ежедневно, отчёт
+  приходит в Telegram раз в неделю. Отчёт приходит **всегда**, даже пустой;
+  если бот молчит неделю — система сломалась.
+- **Прочитать отчёт.** Формат карточки: `[score/100]`, площадь («от X м²» =
+  можно арендовать часть), высота, отопление, чеклист ✓/✗/? (1 этаж, отдельный
+  вход, парковка, метро), вердикт судьи, риски, `⚖` сравнение с прошлыми
+  лидерами, `📷` что видно на фото, ссылка на объявление.
+- **Поменять критерии поиска** — правьте `config.yaml` (секция `profile`:
+  площади, высоты, исключения), затем `uv run padel-rescore`, чтобы пересчитать
+  уже собранную базу.
+- **Разовые ручные команды:**
+
+```bash
+uv run padel-candidates            # JSON: кандидаты недели + контекст (для отладки)
+uv run padel-telegram --text "тест" # проверить доставку в Telegram
+uv run padel-rescore               # пересчёт правил по всей базе
+pi                                  # интерактивная сессия Pi в проекте
 ```
 
 ## Расписание (cron)
 
-См. `deploy/crontab.example`: ежедневно `uv run padel-collect` (плюс ping
-healthchecks), еженедельно `pi -p ...` для отчёта. Отчёт отправляется всегда,
-даже пустой — молчание бота означает поломку.
+Готовый пример — `deploy/crontab.example`:
 
-## browser-harness: разведка и ремонт (НЕ production)
+```cron
+CRON_TZ=Europe/Minsk
+PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin
 
-`browser-harness` — явная dev-зависимость (`[dependency-groups] dev` в
-`pyproject.toml`), ставится и запускается только через uv. Применение:
+40 8 * * * cd /opt/padel-monitor && uv run padel-collect >> data/collect.log 2>&1
+0 18 * * 0 cd /opt/padel-monitor && pi -p "Запусти недельный отчёт по скиллу padel-weekly-report" --no-session >> data/report.log 2>&1
+```
 
-- разведка DOM/network источников;
-- скриншоты;
-- проверка UI-фильтров;
-- ремонт site specs (`pi/site-specs/*.md`);
-- обновление domain skills (`pi/browser-harness/domain-skills/*`).
+На машине с cron должны быть uv, node и pi, и на ней нужно один раз выполнить
+`pi /login`. ⚠️ Проверено: `pi -p` возвращает код 0 даже при ошибке («No API
+key found») — по exit-коду cron поломку не заметит, поэтому нужен следующий пункт.
 
-Production-сбор всегда остаётся за HTTP-коллекторами: даже после ремонта через
-браузер данные возвращаются в bounded JSON-контракт (`padel-collect`).
+### Надёжность
 
-### Изолированный Chrome (Windows, без ручного разрешения)
+1. Заведите бесплатный чек на [healthchecks.io](https://healthchecks.io)
+   (период — 1 день) и впишите его URL в `.env` → `HEALTHCHECKS_URL`. После
+   каждого успешного сбора уходит ping; пропал ping — вам придёт алерт.
+2. Правило «отчёт всегда»: пустой недельный отчёт — это сигнал «система жива».
+
+## Починка источников (browser-harness)
+
+Если `padel-collect` начал падать или парсить мусор — сайт поменял вёрстку.
+Ремонт делает Pi-агент по скиллу `collector-repair`:
+
+```bash
+pi -p "Коллектор realt сломался, продиагностируй и почини по скиллу collector-repair"
+```
+
+Сначала он смотрит сохранённое сырьё (`data/raw/<дата>/`), справочники
+`pi/site-specs/*.md` и разведнотесы `pi/browser-harness/domain-skills/*`.
+Если этого мало — живая разведка через browser-harness (dev-зависимость uv,
+**не** production-сборщик: только DOM/network, скриншоты, проверка UI-фильтров,
+ремонт site specs). Для неё нужен изолированный Chrome с CDP на localhost:
+
+**Windows (PowerShell):**
 
 ```powershell
 $chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
@@ -104,7 +164,7 @@ $env:BU_CDP_URL="http://127.0.0.1:$port"
 uv run browser-harness
 ```
 
-### Изолированный Chrome (macOS/Linux)
+**macOS/Linux:**
 
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
@@ -115,25 +175,51 @@ uv run browser-harness
 BU_NAME=padel-monitor BU_CDP_URL=http://127.0.0.1:9333 uv run browser-harness
 ```
 
-CDP-порт держать только на 127.0.0.1 и не открывать наружу.
+CDP-порт держите только на 127.0.0.1. Итог любого ремонта — данные снова идут
+через `uv run padel-collect`, браузер в ежедневном сборе не участвует.
 
-## Структура
+---
+
+## Статус: что проверено, а что нет (2026-07-05)
+
+| Что | Статус |
+|---|---|
+| `uv sync --all-groups`, все 5 CLI-команд | ✅ проверено, работает |
+| Сбор Realt + Kufar (`padel-collect`) | ✅ проверено: 300 + 84 объявления, новые находятся |
+| Доставка в Telegram | ✅ проверено 2026-07-04, отчёты доходили |
+| `browser-harness` через uv | ✅ ставится и запускается (живая разведка не гонялась) |
+| Pi установлен (v0.80.3), скиллы в `.pi/skills/` | ✅ установлен; ⚠️ **логина нет** — `pi -p` сейчас отвечает `No API key found`, нужен шаг 3 |
+| Недельный отчёт через Pi end-to-end | ❌ **не гонялся** (ждёт `pi /login`); скиллы написаны, CLI-контракты под ними проверены по отдельности |
+| Vision-анализ фото | ❌ не проверялся — зависит от выбранной в `/model` модели; без image input скилл честно напишет в отчёте «фото не анализировались» |
+| Источник megapolis-real.by | ❌ **выключен**: сайт не отвечает не с белорусских IP; адаптер написан по разведке, но вживую не проверен. План включения: `pi/site-specs/megapolis.md` |
+| healthchecks.io | ⚠️ код готов, URL в `.env` не задан — алертов о поломке пока нет |
+| Windows | ⚠️ команды uv/pi те же, но на Windows проект не запускался |
+
+Известные долги: Telegram-токен ранее засветился в переписке — стоит
+перевыпустить у @BotFather (`/revoke`) и обновить `.env`.
+
+## Структура репозитория
 
 ```
-pyproject.toml, uv.lock      Python-слой (uv); dev-группа: browser-harness
-padel_monitor/               коллекторы: adapters, normalize, rules, db, cli
-config.yaml                  падел-профиль, источники, chat_id
-AGENTS.md                    контекст проекта для Pi
-.pi/skills/                  скиллы Pi (weekly report, collector repair)
-pi/site-specs/               спеки источников: контракты, грабли, стоп-сигналы
+pyproject.toml, uv.lock   Python-слой (uv); dev-группа: browser-harness
+padel_monitor/            коллекторы: adapters/, normalize, rules, db, telegram, cli
+config.yaml               падел-профиль, источники, chat_id
+.env                      секреты (не в git)
+AGENTS.md                 контекст проекта для Pi
+.pi/skills/               скиллы Pi: padel-weekly-report, collector-repair
+pi/site-specs/            спеки источников: контракты, грабли, стоп-сигналы
 pi/browser-harness/domain-skills/   разведнотесы по сайтам
-data/                        SQLite + raw-снапшоты (в git не попадает)
-deploy/crontab.example       расписание
+data/                     SQLite-база и raw-снапшоты (не в git)
+deploy/crontab.example    расписание
 ```
 
-## Известные ограничения
+## Частые ошибки
 
-- Megapolis выключен: сайт недоступен не с BY-IP; включать по
-  `pi/site-specs/megapolis.md`.
-- Vision-анализ фото требует модели с image input (выбирается в `pi /model`);
-  без него скилл честно помечает отчёт «фото не анализировались».
+| Симптом | Причина и лечение |
+|---|---|
+| `No API key found for the selected model` | Pi не залогинен: `pi` → `/login` → выбрать подписку |
+| `TELEGRAM_BOT_TOKEN не задан (.env)` | создать `.env` из `.env.example`, вписать токен |
+| Бот не пишет, хотя `{"sent": true}` | получатель не нажал `/start` у бота, либо `chat_id` в `config.yaml` не ваш |
+| `"megapolis": {"skipped": true}` | норма: источник выключен до проверки с BY-IP |
+| В сводке `"ok": false` у источника со `STOP:` | сайт отдал 403/капчу или сменил вёрстку — скилл `collector-repair` |
+| `uv: command not found` в cron | добавить `$HOME/.local/bin` в `PATH` внутри crontab |
