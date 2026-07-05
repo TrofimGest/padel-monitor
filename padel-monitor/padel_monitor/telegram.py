@@ -23,5 +23,17 @@ def send(token: str, chat_id: int, text: str):
         r.raise_for_status()
 
 
+def send_document(token: str, chat_id: int, path: str, caption: str = ""):
+    """Отправка файла (карта, отчёт) через sendDocument."""
+    import os
+    with open(path, "rb") as f:
+        r = httpx.post(
+            f"https://api.telegram.org/bot{token}/sendDocument",
+            data={"chat_id": chat_id, "caption": caption[:1024]},
+            files={"document": (os.path.basename(path), f, "text/html")},
+            timeout=60)
+    r.raise_for_status()
+
+
 def esc(s) -> str:
     return html.escape(str(s or ""))

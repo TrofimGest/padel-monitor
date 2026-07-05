@@ -22,6 +22,35 @@ def _num(v) -> float | None:
         return None
 
 
+def parse_detail(html: str, url: str) -> dict:
+    """Detail-страница kufar: полный body, все фото, высота/отопление из текста.
+    Возвращает поля для обновления listing (только непустые)."""
+    from .base import next_data
+    init = ((next_data(html, url)["props"]["initialState"].get("adView") or {})
+            .get("data") or {}).get("initial") or {}
+    out: dict = {}
+    body = init.get("body")
+    if body:
+        out["description"] = body[:6000]
+    imgs = [IMG_BASE + i["path"] for i in (init.get("images") or [])[:12]
+            if i.get("path")]
+    if imgs:
+        out["images"] = imgs
+    p = _params(init)
+    improvements = p.get("commercial_improvements", {}).get("vl") or []
+    if body:
+        h = extract_height_m(body)
+        if h:
+            out["ceiling_height_m"] = h
+    if "Отопление" in improvements:
+        out["heated"] = True
+    elif body:
+        hd = extract_heated(body)
+        if hd is not None:
+            out["heated"] = hd
+    return out
+
+
 def crawl(cfg: dict, raw_dir: str) -> list[Listing]:
     out, seen = [], set()
     for url in cfg["urls"]:

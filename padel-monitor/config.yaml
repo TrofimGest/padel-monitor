@@ -19,6 +19,7 @@ profile:
   # жёсткие исключения по тексту (подтверждены)
   exclude_keywords: ["подвал", "цокол", "коворкинг", "кабинет"]
   top_n: 15                 # сколько вариантов в еженедельном отчёте
+  alert_min_score: 80       # pre_score, с которого шлём мгновенный алерт-эталон
 
 sources:
   realt:
@@ -38,6 +39,7 @@ sources:
       - https://re.kufar.by/l/minsk/snyat/kommercheskaya
       - https://re.kufar.by/l/minsk/snyat/kommercheskaya/sklady
       - https://re.kufar.by/l/minsk/snyat/kommercheskaya/promyshlennye
+      - https://re.kufar.by/l/minsk/snyat/kommercheskaya/magaziny
   megapolis:
     enabled: false          # сайт недоступен не с BY IP; включить и проверить с VPS
     delay_s: 3
@@ -51,7 +53,21 @@ telegram:
 # LLM-скоринг/vision/судья живут в Pi-агенте (.pi/skills/padel-weekly-report),
 # модель выбирается в Pi через /model. Здесь только параметры выдачи данных.
 report:
-  prev_leaders: 5                     # сколько прошлых лидеров отдавать судье для сравнения
+  prev_leaders: 5                     # сколько прошлых лидеров отдавать судье
+  alert_max_per_day: 3                # максимум мгновенных алертов-эталонов в сутки
+  alert_price_drop_pct: 7             # порог снижения цены для алерта, %
+  enrich_top_n: 20                    # сколько кандидатов обогащать detail-страницами
+  enrich_delay_s: 4                   # задержка между detail-запросами
+  vision_max_images_enriched: 8       # фото на обогащённого кандидата для судьи
+
+# Юнит-экономика клуба — допущения для оценки цены судьёй (правь по мере
+# изучения рынка). Судья считает: корты = кусок / 300; выручка = корты *
+# hours * 30 * utilization * price; доля аренды = аренда / выручка.
+economics:
+  court_hours_per_day: 14             # игровое окно клуба
+  utilization: 0.45                   # средняя загрузка корта
+  price_per_hour_byn: 60              # ставка аренды корта в час
+  rent_share_warn: 0.25               # аренда > этой доли выручки — тревога
 
 db_path: data/monitor.db
 raw_dir: data/raw

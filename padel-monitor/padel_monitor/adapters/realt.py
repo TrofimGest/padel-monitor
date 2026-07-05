@@ -41,6 +41,35 @@ def _price_fields(o: dict) -> tuple[float | None, float | None, float | None]:
     return byn, usd, ppm2
 
 
+def parse_detail(html: str, url: str) -> dict:
+    """Detail-страница realt: полное описание, все фото, явная высота/отопление.
+    Возвращает поля для обновления listing (только непустые)."""
+    from .base import next_data
+    o = (next_data(html, url)["props"]["pageProps"] or {}).get("object") or {}
+    out: dict = {}
+    desc = o.get("description")
+    if desc:
+        out["description"] = desc[:6000]
+    slides = o.get("slides") or []
+    if slides:
+        out["images"] = slides[:12]
+    ch = o.get("ceilingHeight")
+    if isinstance(ch, (int, float)) and 2 <= ch <= 30:
+        out["ceiling_height_m"] = float(ch)
+    elif desc:
+        h = extract_height_m(desc)
+        if h:
+            out["ceiling_height_m"] = h
+    heat = o.get("heating")
+    if isinstance(heat, str) and heat.strip():
+        out["heated"] = "нет" not in heat.lower()
+    elif desc:
+        hd = extract_heated(desc)
+        if hd is not None:
+            out["heated"] = hd
+    return out
+
+
 def crawl(cfg: dict, raw_dir: str) -> list[Listing]:
     out = []
     for cat in cfg["categories"]:

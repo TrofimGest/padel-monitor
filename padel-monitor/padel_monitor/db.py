@@ -39,6 +39,14 @@ CREATE TABLE IF NOT EXISTS reported (
     listing_id INTEGER REFERENCES listings(id),
     report_ts TEXT, kind TEXT
 );
+CREATE TABLE IF NOT EXISTS alerts (
+    listing_id INTEGER REFERENCES listings(id),
+    ts TEXT, kind TEXT, ref TEXT
+);
+CREATE TABLE IF NOT EXISTS dup_groups (
+    listing_id INTEGER PRIMARY KEY REFERENCES listings(id),
+    group_id INTEGER
+);
 """
 
 
@@ -53,6 +61,7 @@ MIGRATIONS = [
     "ALTER TABLE scores ADD COLUMN judge_notes TEXT",
     "ALTER TABLE listings ADD COLUMN lat REAL",
     "ALTER TABLE listings ADD COLUMN lon REAL",
+    "ALTER TABLE listings ADD COLUMN enriched_at TEXT",
 ]
 
 
@@ -73,8 +82,9 @@ def upsert_listing(con, row: dict) -> tuple[int, str]:
     """Возвращает (listing_id, 'new'|'changed'|'seen')."""
     ts = now_iso()
     cur = con.execute(
-        "SELECT id, content_hash, price_byn, price_per_m2, status FROM listings "
-        "WHERE source=? AND source_id=?", (row["source"], row["source_id"]))
+        "SELECT id, content_hash, price_byn, price_per_m2, status, enriched_at "
+        "FROM listings WHERE source=? AND source_id=?",
+        (row["source"], row["source_id"]))
     existing = cur.fetchone()
     cols = [k for k in row if k not in ("source", "source_id")]
     if existing is None:
@@ -97,9 +107,19 @@ def upsert_listing(con, row: dict) -> tuple[int, str]:
                 con.execute(
                     "INSERT INTO events (listing_id, ts, kind, old_value, new_value) "
                     "VALUES (?,?,?,?,?)", (lid, ts, kind, str(old), str(new)))
+    # Защита enrich: если объявление обогащено и по сути не изменилось —
+    # не затираем detail-поля (полное описание, все фото, точная высота).
+    # Если изменилось — сбрасываем enriched_at, чтобы enrich прогнался заново.
+    enriched = existing["enriched_at"]
+    tail = ""
+    if enriched and not changed:
+        keep = {"description", "images", "ceiling_height_m", "heated", "area_min_m2"}
+        cols = [c for c in cols if c not in keep]
+    elif enriched and changed:
+        tail = ", enriched_at=NULL"
     sets = ",".join(f"{c}=?" for c in cols)
     con.execute(
-        f"UPDATE listings SET {sets}, last_seen_at=?, status='active' WHERE id=?",
+        f"UPDATE listings SET {sets}, last_seen_at=?, status='active'{tail} WHERE id=?",
         [row[c] for c in cols] + [ts, lid])
     if existing["status"] == "gone":
         con.execute("INSERT INTO events (listing_id, ts, kind) VALUES (?,?, 'returned')",
@@ -127,3 +147,27 @@ def log_run(con, source: str, started: str, ok: bool, found: int, new: int,
         "INSERT INTO runs (started_at, finished_at, source, ok, found, new, changed, error) "
         "VALUES (?,?,?,?,?,?,?,?)",
         (started, now_iso(), source, int(ok), found, new, changed, error))
+
+
+def already_alerted(con, listing_id: int, kind: str, ref: str = None) -> bool:
+    if ref is None:
+        row = con.execute("SELECT 1 FROM alerts WHERE listing_id=? AND kind=?",
+                          (listing_id, kind)).fetchone()
+    else:
+        row = con.execute("SELECT 1 FROM alerts WHERE listing_id=? AND kind=? AND ref=?",
+                          (listing_id, kind, ref)).fetchone()
+    return row is not None
+
+
+def record_alert(con, listing_id: int, kind: str, ref: str = None):
+    con.execute("INSERT INTO alerts (listing_id, ts, kind, ref) VALUES (?,?,?,?)",
+                (listing_id, now_iso(), kind, ref))
+
+
+def alerts_today(con, kind: str = None) -> int:
+    q = "SELECT COUNT(*) FROM alerts WHERE ts >= datetime('now', '-1 day')"
+    args = ()
+    if kind:
+        q += " AND kind=?"
+        args = (kind,)
+    return con.execute(q, args).fetchone()[0]
